@@ -43,6 +43,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const navItems = [
   { name: "Dashboard", href: "/pharmacy/dashboard", icon: LayoutDashboard },
@@ -76,6 +83,18 @@ const PharmacyInventory = () => {
     expiry: "",
     supplier: ""
   });
+  const categories = [
+    "Cardiac",
+    "Dermatology",
+    "Neuro",
+    "Orthopedic",
+    "Eye",
+    "Pediatric",
+    "General",
+    "Antibiotics",
+    "Painkiller",
+    "Vitamins",
+  ];
 
   const [inventory, setInventory] = useState([]);
   const formatINR = useMemo(
@@ -239,12 +258,14 @@ const PharmacyInventory = () => {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="category">Category</Label>
-                    <Input
-                      id="category"
-                      value={newItem.category}
-                      onChange={(e) => setNewItem({...newItem, category: e.target.value})}
-                      placeholder="e.g. Antibiotics"
-                    />
+                    <Select value={newItem.category} onValueChange={(v)=>setNewItem({...newItem, category: v})}>
+                      <SelectTrigger id="category">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -326,11 +347,14 @@ const PharmacyInventory = () => {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="edit-category">Category</Label>
-                      <Input
-                        id="edit-category"
-                        value={selectedItem.category}
-                        onChange={(e) => setSelectedItem({...selectedItem, category: e.target.value})}
-                      />
+                      <Select value={selectedItem.category} onValueChange={(v)=>setSelectedItem({...selectedItem, category: v})}>
+                        <SelectTrigger id="edit-category">
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">

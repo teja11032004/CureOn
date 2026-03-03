@@ -21,20 +21,25 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { pharmacyService } from "@/services/api";
+import { pharmacyService, userService } from "@/services/api";
+
+const freqOptions = ["Early Morning", "Morning", "Afternoon", "Dinner", "After Dinner"];
 
 const PrescriptionModal = ({ open, onOpenChange, appointment, onSubmit }) => {
   const [diagnosis, setDiagnosis] = useState("");
   const [medicines, setMedicines] = useState([
-    { name: "", dosage: "", frequency: "", duration: "" }
+    { name: "", frequency: [], duration: "", quantity: 1 }
   ]);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [picker, setPicker] = useState({ open: false, index: null, query: "", results: [], loading: false });
   const debounceRef = useRef(null);
+  const [pharmacies, setPharmacies] = useState([]);
+  const [selectedPharmacy, setSelectedPharmacy] = useState(null);
+  const [doctorSpecialization, setDoctorSpecialization] = useState(null);
 
   const handleAddMedicine = () => {
-    setMedicines([...medicines, { name: "", dosage: "", frequency: "", duration: "" }]);
+    setMedicines([...medicines, { name: "", frequency: [], duration: "", quantity: 1 }]);
   };
 
   const handleRemoveMedicine = (index) => {
@@ -49,11 +54,22 @@ const PrescriptionModal = ({ open, onOpenChange, appointment, onSubmit }) => {
   };
 
   useEffect(() => {
+    if (open) {
+      userService.listPharmacies().then((list) => setPharmacies(list || [])).catch(()=>setPharmacies([]));
+      setDoctorSpecialization(appointment?.doctor_specialization || null);
+    }
+  }, [open, appointment]);
+
+  useEffect(() => {
     if (!picker.open) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await pharmacyService.catalog.list({ q: picker.query });
+        const res = await pharmacyService.catalog.list({ 
+          q: picker.query, 
+          pharmacy_id: selectedPharmacy?.id || selectedPharmacy || undefined,
+          specialization: doctorSpecialization || undefined,
+        });
         setPicker((p) => ({ ...p, results: res || [] }));
       } catch {
         setPicker((p) => ({ ...p, results: [] }));
@@ -69,8 +85,12 @@ const PrescriptionModal = ({ open, onOpenChange, appointment, onSubmit }) => {
       toast.error("Please enter a diagnosis");
       return;
     }
+    if (!selectedPharmacy) {
+      toast.error("Please select a pharmacy");
+      return;
+    }
 
-    if (medicines.some(m => !m.name)) {
+    if (medicines.some(m => !m.name || !m.quantity || m.quantity <= 0)) {
       toast.error("Please specify medicine names");
       return;
     }
@@ -82,11 +102,12 @@ const PrescriptionModal = ({ open, onOpenChange, appointment, onSubmit }) => {
         diagnosis,
         items: medicines.map(m => ({
           name: m.name,
-          dosage: m.dosage,
-          frequency: m.frequency,
+          frequency: Array.isArray(m.frequency) ? m.frequency.join(", ") : (m.frequency || ""),
           duration: m.duration,
+          quantity: Number(m.quantity || 1),
         })),
         notes,
+        pharmacy: selectedPharmacy?.id || selectedPharmacy,
       };
       const result = await appointmentsService.prescriptions.create(appointment.id, payload);
       toast.success("Prescription sent successfully");
@@ -95,7 +116,7 @@ const PrescriptionModal = ({ open, onOpenChange, appointment, onSubmit }) => {
       }
       onOpenChange(false);
       setDiagnosis("");
-      setMedicines([{ name: "", dosage: "", frequency: "", duration: "" }]);
+      setMedicines([{ name: "", frequency: [], duration: "", quantity: 1 }]);
       setNotes("");
     } catch (error) {
       const detail =
@@ -131,6 +152,36 @@ const PrescriptionModal = ({ open, onOpenChange, appointment, onSubmit }) => {
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          <div className="space-y-2">
+            <Label>Pharmacy</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Input
+                  placeholder="Select pharmacy"
+                  readOnly
+                  value={selectedPharmacy ? ((selectedPharmacy.first_name || "") + " " + (selectedPharmacy.last_name || "")).trim() || selectedPharmacy.username || "" : ""}
+                />
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-[320px]" align="start">
+                <Command>
+                  <CommandInput placeholder="Search pharmacy..." />
+                  <CommandList>
+                    <CommandEmpty>No pharmacies</CommandEmpty>
+                    <CommandGroup>
+                      {(pharmacies || []).map((ph) => (
+                        <CommandItem key={ph.id} value={ph.username || String(ph.id)} onSelect={() => setSelectedPharmacy(ph)}>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{(ph.first_name || "") + " " + (ph.last_name || "") || ph.username}</span>
+                            <span className="text-xs text-muted-foreground">{ph.email || ""}</span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="diagnosis">Diagnosis</Label>
             <Input 
@@ -195,21 +246,28 @@ const PrescriptionModal = ({ open, onOpenChange, appointment, onSubmit }) => {
                     </PopoverContent>
                   </Popover>
                 </div>
-                <div className="col-span-3 space-y-1">
-                  <Label className="text-xs">Dosage</Label>
-                  <Input 
-                    placeholder="e.g. 500mg" 
-                    value={medicine.dosage}
-                    onChange={(e) => handleMedicineChange(index, "dosage", e.target.value)}
-                  />
-                </div>
-                <div className="col-span-2 space-y-1">
-                  <Label className="text-xs">Freq</Label>
-                  <Input 
-                    placeholder="1-0-1" 
-                    value={medicine.frequency}
-                    onChange={(e) => handleMedicineChange(index, "frequency", e.target.value)}
-                  />
+                <div className="col-span-6 space-y-1">
+                  <Label className="text-xs">Frequency</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {freqOptions.map((opt) => {
+                      const checked = Array.isArray(medicine.frequency) && medicine.frequency.includes(opt);
+                      return (
+                        <label key={opt} className={`px-2 py-1 rounded-full text-xs cursor-pointer ${checked ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"}`}>
+                          <input
+                            type="checkbox"
+                            className="hidden"
+                            checked={checked}
+                            onChange={(e) => {
+                              const arr = new Set(Array.isArray(medicine.frequency) ? medicine.frequency : []);
+                              if (e.target.checked) arr.add(opt); else arr.delete(opt);
+                              handleMedicineChange(index, "frequency", Array.from(arr));
+                            }}
+                          />
+                          {opt}
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div className="col-span-2 space-y-1">
                   <Label className="text-xs">Duration</Label>
@@ -217,6 +275,15 @@ const PrescriptionModal = ({ open, onOpenChange, appointment, onSubmit }) => {
                     placeholder="5 days" 
                     value={medicine.duration}
                     onChange={(e) => handleMedicineChange(index, "duration", e.target.value)}
+                  />
+                </div>
+                <div className="col-span-1 space-y-1">
+                  <Label className="text-xs">Qty</Label>
+                  <Input 
+                    type="number"
+                    min={1}
+                    value={medicine.quantity}
+                    onChange={(e) => handleMedicineChange(index, "quantity", Math.max(1, parseInt(e.target.value || "1")))}
                   />
                 </div>
                 <div className="col-span-1">

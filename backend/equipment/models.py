@@ -3,6 +3,13 @@ from django.conf import settings
 
 
 class Equipment(models.Model):
+    lab = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="equipments",
+    )
     class Status(models.TextChoices):
         OPERATIONAL = "OPERATIONAL", "Operational"
         MAINTENANCE = "MAINTENANCE", "Maintenance"
@@ -10,7 +17,7 @@ class Equipment(models.Model):
         REPORTED = "REPORTED", "Reported"
         BROKEN = "BROKEN", "Broken"
 
-    asset_id = models.CharField(max_length=50, unique=True)
+    asset_id = models.CharField(max_length=50)
     name = models.CharField(max_length=255)
     model = models.CharField(max_length=255, blank=True)
     location = models.CharField(max_length=255, blank=True)
@@ -28,6 +35,13 @@ class Equipment(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["lab", "asset_id"], name="unique_asset_per_lab"
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.asset_id} - {self.name}"

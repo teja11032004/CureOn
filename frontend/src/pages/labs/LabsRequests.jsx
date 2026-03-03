@@ -85,8 +85,10 @@ const LabsRequests = () => {
           patient: r.patient_name,
           doctor: `Dr. ${r.doctor_name}`,
           tests: r.tests || [],
-          priority: (r.priority || 'ROUTINE').replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()),
-          status: (r.status || 'PENDING').replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()),
+          priority: (r.priority || 'ROUTINE'),               // store code: ROUTINE/URGENT
+          priorityLabel: ((r.priority || 'ROUTINE').replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())),
+          status: (r.status || 'PENDING'),                   // store code: PENDING/IN_PROGRESS/COMPLETED/REJECTED
+          statusLabel: ((r.status || 'PENDING').replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())),
           date: new Date(r.created_at).toISOString().split('T')[0],
           time: new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }));
@@ -160,16 +162,16 @@ const LabsRequests = () => {
     }
   };
 
-  const getPriorityColor = (priority) => {
-    return priority === "Urgent" ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800";
+  const getPriorityColor = (priorityCode) => {
+    return (priorityCode || '').toUpperCase() === "URGENT" ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800";
   };
 
-  const getStatusColor = (status) => {
-    switch(status) {
-      case "Pending": return "bg-yellow-100 text-yellow-800";
-      case "In Progress": return "bg-blue-100 text-blue-800";
-      case "Completed": return "bg-green-100 text-green-800";
-      case "Rejected": return "bg-gray-100 text-gray-800";
+  const getStatusColor = (statusCode) => {
+    switch((statusCode || '').toUpperCase()) {
+      case "PENDING": return "bg-yellow-100 text-yellow-800";
+      case "IN_PROGRESS": return "bg-blue-100 text-blue-800";
+      case "COMPLETED": return "bg-green-100 text-green-800";
+      case "REJECTED": return "bg-gray-100 text-gray-800";
       default: return "bg-gray-100 text-gray-800";
     }
   };
@@ -200,14 +202,19 @@ const LabsRequests = () => {
                   <div className="space-y-2">
                     <h4 className="font-medium leading-none">Status</h4>
                     <div className="grid grid-cols-2 gap-2">
-                      {["Pending", "In Progress", "Completed", "Rejected"].map((status) => (
-                        <div key={status} className="flex items-center space-x-2">
+                      {[
+                        { code: "PENDING", label: "Pending" },
+                        { code: "IN_PROGRESS", label: "In Progress" },
+                        { code: "COMPLETED", label: "Completed" },
+                        { code: "REJECTED", label: "Rejected" },
+                      ].map(({ code, label }) => (
+                        <div key={code} className="flex items-center space-x-2">
                           <Checkbox 
-                            id={`status-${status}`} 
-                            checked={filters.status.includes(status)}
-                            onCheckedChange={() => handleFilterChange("status", status)}
+                            id={`status-${code}`} 
+                            checked={filters.status.includes(code)}
+                            onCheckedChange={() => handleFilterChange("status", code)}
                           />
-                          <Label htmlFor={`status-${status}`}>{status}</Label>
+                          <Label htmlFor={`status-${code}`}>{label}</Label>
                         </div>
                       ))}
                     </div>
@@ -215,14 +222,17 @@ const LabsRequests = () => {
                   <div className="space-y-2">
                     <h4 className="font-medium leading-none">Priority</h4>
                     <div className="grid grid-cols-2 gap-2">
-                      {["Routine", "Urgent"].map((priority) => (
-                        <div key={priority} className="flex items-center space-x-2">
+                      {[
+                        { code: "ROUTINE", label: "Routine" },
+                        { code: "URGENT", label: "Urgent" },
+                      ].map(({ code, label }) => (
+                        <div key={code} className="flex items-center space-x-2">
                           <Checkbox 
-                            id={`priority-${priority}`} 
-                            checked={filters.priority.includes(priority)}
-                            onCheckedChange={() => handleFilterChange("priority", priority)}
+                            id={`priority-${code}`} 
+                            checked={filters.priority.includes(code)}
+                            onCheckedChange={() => handleFilterChange("priority", code)}
                           />
-                          <Label htmlFor={`priority-${priority}`}>{priority}</Label>
+                          <Label htmlFor={`priority-${code}`}>{label}</Label>
                         </div>
                       ))}
                     </div>
@@ -284,7 +294,7 @@ const LabsRequests = () => {
                     </TableCell>
                     <TableCell>
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(req.priority)}`}>
-                        {req.priority}
+                        {req.priorityLabel}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -295,7 +305,7 @@ const LabsRequests = () => {
                     </TableCell>
                     <TableCell>
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(req.status)}`}>
-                        {req.status}
+                        {req.statusLabel}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
@@ -304,7 +314,7 @@ const LabsRequests = () => {
                           variant="ghost" 
                           size="icon" 
                           onClick={() => handleAction(req, 'accept')} 
-                          disabled={(req.status || '').toLowerCase() !== 'pending'}
+                          disabled={(req.status || '') !== 'PENDING'}
                           title="Accept Request"
                           className="text-green-600 hover:text-green-700 hover:bg-green-50"
                         >
@@ -314,7 +324,7 @@ const LabsRequests = () => {
                           variant="ghost" 
                           size="icon" 
                           onClick={() => handleAction(req, 'reject')} 
-                          disabled={(req.status || '').toLowerCase() !== 'pending'}
+                          disabled={(req.status || '') !== 'PENDING'}
                           title="Reject Request"
                           className="text-destructive hover:text-destructive hover:bg-destructive/10"
                         >

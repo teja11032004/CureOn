@@ -130,10 +130,7 @@ const LabsResults = () => {
     setSortOrder(prev => prev === "desc" ? "asc" : "desc");
   };
 
-  const handleBulkUpload = () => {
-    toast.info("Opening bulk upload interface...");
-  };
-
+ 
   const filteredTests = useMemo(() => pendingTests.filter(test => {
     const matchesSearch = 
       test.patient.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -160,10 +157,7 @@ const LabsResults = () => {
             <p className="text-muted-foreground mt-1">Enter and manage laboratory test results</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleBulkUpload}>
-              <Upload className="w-4 h-4 mr-2" />
-              Bulk Upload
-            </Button>
+            
             <Button variant="outline" onClick={handleSortToggle}>
               <ArrowUpDown className="w-4 h-4 mr-2" />
               Sort {sortOrder === 'asc' ? 'Oldest' : 'Newest'}

@@ -64,6 +64,7 @@ const DoctorAppointments = () => {
         requestedDate: a.requested_date ? format(new Date(a.requested_date), "PP") : null,
         requestedTime: a.requested_time_slot || null,
         doctorId: a.doctor,
+        doctor_specialization: a.doctor_specialization,
       }));
       setAppointments(items);
     } catch {

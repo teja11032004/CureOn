@@ -111,6 +111,10 @@ export const userService = {
     });
     return response.data;
   },
+  listPharmacies: async () => {
+    const response = await api.get("/pharmacies/");
+    return response.data;
+  },
 
   listLabs: async () => {
     const response = await api.get("/labs/");
@@ -320,13 +324,14 @@ export const appointmentsService = {
   },
 
   prescriptions: {
-    create: async (appointmentId, { diagnosis, items, notes }) => {
+    create: async (appointmentId, { diagnosis, items, notes, pharmacy }) => {
       const response = await appointmentsApi.post(
         `/${appointmentId}/prescription/`,
         {
           diagnosis,
           notes,
           items,
+          pharmacy,
         }
       );
       return response.data;
@@ -370,6 +375,12 @@ export const appointmentsService = {
         `/pharmacy/prescriptions/${prescriptionId}/bill/`,
         { items }
       );
+      return response.data;
+    },
+    downloadBill: async (prescriptionId) => {
+      const response = await appointmentsApi.get(`/patient/prescriptions/${prescriptionId}/bill/`, {
+        responseType: "blob",
+      });
       return response.data;
     },
   },
@@ -593,6 +604,10 @@ export const equipmentService = {
     });
     return response.data;
   },
+  detail: async (id) => {
+    const response = await equipmentApi.get(`/equipment/${id}/`);
+    return response.data;
+  },
   create: async ({ asset_id, name, model, location }) => {
     const response = await equipmentApi.post("/equipment/", {
       asset_id,
@@ -621,6 +636,13 @@ export const equipmentService = {
     const response = await equipmentApi.post(
       `/equipment/${id}/report-issue/`,
       { issue_type, description }
+    );
+    return response.data;
+  },
+  resolveIssue: async (id, { status } = {}) => {
+    const response = await equipmentApi.post(
+      `/equipment/${id}/resolve-issue/`,
+      { status }
     );
     return response.data;
   },
@@ -747,9 +769,13 @@ export const pharmacyService = {
     },
   },
   catalog: {
-    list: async ({ q } = {}) => {
+    list: async ({ q, pharmacy_id, specialization } = {}) => {
       const response = await pharmacyApi.get("/catalog/", {
-        params: { q: q || undefined },
+        params: { 
+          q: q || undefined,
+          pharmacy_id: pharmacy_id || undefined,
+          specialization: specialization || undefined,
+        },
       });
       return response.data;
     },
@@ -783,6 +809,12 @@ export const pharmacyService = {
     },
     complete: async (id) => {
       const response = await pharmacyApi.post(`/orders/${id}/complete/`);
+      return response.data;
+    },
+    bill: async (id) => {
+      const response = await pharmacyApi.get(`/orders/${id}/bill/`, {
+        responseType: "blob",
+      });
       return response.data;
     },
   },

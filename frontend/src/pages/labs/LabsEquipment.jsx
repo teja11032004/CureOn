@@ -347,6 +347,25 @@ const LabsEquipment = () => {
                             <AlertTriangle className="w-4 h-4 mr-2" />
                             Report Issue
                           </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={async () => {
+                          try {
+                            const ok = await equipmentService.remove(eq.id);
+                            if (ok) {
+                              setEquipmentList(prev => prev.filter(e => e.id !== eq.id));
+                              toast.success(`Deleted ${eq.name}`);
+                            } else {
+                              toast.error("Failed to delete equipment");
+                            }
+                          } catch (err) {
+                            toast.error("Failed to delete equipment");
+                          }
+                        }}
+                      >
+                        <Wrench className="w-4 h-4 mr-2" />
+                        Delete Equipment
+                      </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

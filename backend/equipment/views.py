@@ -7,6 +7,7 @@ from django.db.models import Q
 from .models import Equipment
 from .serializers import EquipmentSerializer
 from .permissions import CanManageEquipment
+from django.contrib.auth import get_user_model
 
 
 class EquipmentViewSet(viewsets.ModelViewSet):
@@ -16,6 +17,9 @@ class EquipmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        user = getattr(self.request, "user", None)
+        if user and getattr(user, "role", None) == "LAB" and not getattr(user, "is_superuser", False):
+            qs = qs.filter(lab=user)
         search = self.request.query_params.get("search")
         status_param = self.request.query_params.get("status")
         if search:
@@ -26,7 +30,8 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save()
+        user = getattr(self.request, "user", None)
+        serializer.save(lab=user if getattr(user, "role", None) == "LAB" else None)
 
     @action(detail=True, methods=["post"], url_path="schedule-maintenance")
     def schedule_maintenance(self, request, pk=None):
@@ -60,4 +65,16 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         eq.reported_by = request.user
         eq.save()
 
+        return Response(EquipmentSerializer(eq).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="resolve-issue")
+    def resolve_issue(self, request, pk=None):
+        eq = self.get_object()
+        next_status = request.data.get("status") or Equipment.Status.OPERATIONAL
+        if next_status not in dict(Equipment.Status.choices):
+            next_status = Equipment.Status.OPERATIONAL
+        eq.status = next_status
+        eq.issue_type = ""
+        eq.issue_description = ""
+        eq.save()
         return Response(EquipmentSerializer(eq).data, status=status.HTTP_200_OK)

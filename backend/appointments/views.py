@@ -19,6 +19,7 @@ from django.http import StreamingHttpResponse, FileResponse, HttpResponse
 import csv
 from io import StringIO, BytesIO
 from datetime import datetime
+from django.core.files.base import ContentFile
 
 User = get_user_model()
 
@@ -409,6 +410,34 @@ class DoctorCreatePrescriptionView(APIView):
         data["appointment"] = appt.id
         serializer = PrescriptionSerializer(data=data)
         serializer.is_valid(raise_exception=True)
+        # Validate specialization restrictions before save
+        try:
+            spec = getattr(getattr(request.user, "doctor_profile", None), "specialization", None)
+            spec_map = {
+                "Cardiologist": ["Cardiac", "Heart"],
+                "Dermatologist": ["Skin", "Dermatology"],
+                "Neurologist": ["Neuro", "Neurology"],
+                "Orthopedic": ["Orthopedic", "Bones"],
+                "Ophthalmologist": ["Eye", "Ophthalmology"],
+                "Pediatrician": ["Pediatric", "Children"],
+                "General Physician": ["General", "Antibiotics", "Painkiller", "Vitamins"],
+            }
+            cats = []
+            for k, v in spec_map.items():
+                if spec and k.lower() in str(spec).lower():
+                    cats = v
+                    break
+            if cats:
+                from pharmacy.models import InventoryItem
+                for it in data.get("items", []):
+                    name = (it or {}).get("name")
+                    inv = InventoryItem.objects.filter(name__iexact=name).first()
+                    if inv:
+                        ok = any([c.lower() in (inv.category or "").lower() for c in cats])
+                        if not ok:
+                            return Response({"detail": f"Medicine '{name}' not allowed for specialization '{spec}'"}, status=400)
+        except Exception:
+            pass
         presc = serializer.save(patient=appt.patient, doctor=request.user, appointment=appt)
         # Auto-create pharmacy orders based on inventory ownership
         try:
@@ -440,6 +469,50 @@ class PatientPrescriptionsView(APIView):
     def get(self, request):
         qs = Prescription.objects.filter(patient=request.user).order_by("-created_at")
         return Response(PrescriptionSerializer(qs, many=True).data)
+
+class PatientPrescriptionBillView(APIView):
+    permission_classes = [IsPatient]
+    def get(self, request, pk):
+        presc = get_object_or_404(Prescription, pk=pk, patient=request.user)
+        if presc.bill_attachment:
+            try:
+                return FileResponse(presc.bill_attachment.open("rb"), as_attachment=True, filename=f"bill_RX-{presc.id}.pdf")
+            except Exception:
+                pass
+        # Fallback: generate minimal bill from prescription items
+        img = Image.new("RGB", (700, 800), color="white")
+        draw = ImageDraw.Draw(img)
+        y = 30
+        draw.text((270, y), "Prescription Bill", fill="black"); y += 30
+        draw.line((20, y, 680, y), fill="black"); y += 10
+        draw.text((40, y), f"RX: {presc.id}", fill="black"); y += 25
+        draw.text((40, y), f"Date: {presc.created_at.strftime('%Y-%m-%d %H:%M')}", fill="black"); y += 25
+        draw.text((40, y), f"Doctor: {getattr(presc.doctor, 'username', '')}", fill="black"); y += 25
+        draw.text((40, y), f"Patient: {getattr(presc.patient, 'username', '')}", fill="black"); y += 25
+        draw.line((20, y, 680, y), fill="black"); y += 15
+        draw.text((40, y), "Items:", fill="black"); y += 20
+        total = 0.0
+        for it in presc.items.all():
+            amt = float((it.unit_price or 0) * (it.quantity or 0))
+            line = f"- {it.name}  x{it.quantity or 0}  @ {it.unit_price or 0} = {amt:.2f}"
+            draw.text((50, y), line, fill="black"); y += 20
+            total += amt
+            if y > 700:
+                draw.line((20, y, 680, y), fill="black"); y = 60
+        draw.line((20, y, 680, y), fill="black"); y += 25
+        draw.text((40, y), f"Total Amount: {total:.2f}", fill="black"); y += 25
+        draw.text((40, y), "Thank you!", fill="black")
+        pdf_io = BytesIO()
+        img.save(pdf_io, "PDF", resolution=100.0)
+        pdf_io.seek(0)
+        try:
+            content = ContentFile(pdf_io.getvalue())
+            presc.bill_attachment.save(f"bill_RX-{presc.id}.pdf", content, save=True)
+            presc.total_amount = total
+            presc.save(update_fields=["bill_attachment", "total_amount", "updated_at"])
+        except Exception:
+            pass
+        return FileResponse(BytesIO(pdf_io.getvalue()), as_attachment=True, filename=f"bill_RX-{presc.id}.pdf")
 
 class PharmacyPrescriptionsView(APIView):
     permission_classes = [IsPharmacy]
@@ -521,20 +594,32 @@ class PharmacyUpdatePrescriptionBillView(APIView):
         if not isinstance(items, list) or not items:
             return Response({"detail": "items list required"}, status=400)
         total = 0
+        matched_any = False
         for incoming in items:
             item_id = incoming.get("id")
+            name = incoming.get("name")
             unit_price = incoming.get("unit_price")
             quantity = incoming.get("quantity")
-            if item_id is None or unit_price is None or quantity is None:
-                return Response({"detail": "id, unit_price, quantity required per item"}, status=400)
+            if unit_price is None or quantity is None:
+                return Response({"detail": "unit_price and quantity required per item"}, status=400)
+            obj = None
+            if item_id is not None:
+                try:
+                    obj = presc.items.get(id=item_id)
+                except Exception:
+                    obj = None
+            if obj is None and name:
+                obj = presc.items.filter(name__iexact=name).first()
+            if obj is not None:
+                matched_any = True
+                obj.unit_price = unit_price
+                obj.quantity = quantity
+                obj.save(update_fields=["unit_price", "quantity"])
+            # Even if item not found on prescription, include in computed total
             try:
-                obj = presc.items.get(id=item_id)
+                total += float(unit_price) * int(quantity)
             except Exception:
-                return Response({"detail": f"Item {item_id} not found"}, status=404)
-            obj.unit_price = unit_price
-            obj.quantity = quantity
-            obj.save(update_fields=["unit_price", "quantity"])
-            total += float(unit_price) * int(quantity)
+                pass
         presc.total_amount = total
         file = request.FILES.get("attachment")
         update_fields = ["total_amount", "updated_at"]

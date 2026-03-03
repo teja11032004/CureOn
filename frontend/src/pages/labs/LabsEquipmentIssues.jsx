@@ -79,11 +79,16 @@ const LabsEquipmentIssues = () => {
     issue.issueType.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleResolve = (id) => {
-    setIssues(issues.map(issue => 
-      issue.id === id ? { ...issue, status: "Resolved" } : issue
-    ));
-    toast.success(`Issue ${id} marked as resolved`);
+  const handleResolve = async (id) => {
+    try {
+      const updated = await equipmentService.resolveIssue(id, { status: "OPERATIONAL" });
+      setIssues(issues.map(issue => 
+        issue.id === id ? { ...issue, status: "Resolved" } : issue
+      ));
+      toast.success(`Issue ${id} marked as resolved`);
+    } catch (e) {
+      toast.error("Failed to resolve issue");
+    }
   };
 
   const getPriorityColor = (priority) => {

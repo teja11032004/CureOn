@@ -137,6 +137,14 @@ class LabsPublicListView(generics.ListAPIView):
         qs = User.objects.filter(role=User.Role.LAB).order_by('username')
         return qs
 
+class PharmaciesPublicListView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ExtendedUserSerializer
+
+    def get_queryset(self):
+        qs = User.objects.filter(role=User.Role.PHARMACY).order_by('username')
+        return qs
+
 class AdminUserUpdateView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
     queryset = User.objects.all()

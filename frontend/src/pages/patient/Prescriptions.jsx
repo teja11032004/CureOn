@@ -75,7 +75,20 @@ const Prescriptions = () => {
                 ))}
               </div>
               <div className="mt-3 flex items-center gap-2">
-                <Button size="sm" variant="outline">
+                <Button size="sm" variant="outline" onClick={async () => {
+                  try {
+                    const blob = await appointmentsService.prescriptions.downloadBill(p.id);
+                    const url = window.URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.setAttribute("download", `bill_RX-${p.id}.pdf`);
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                  } catch {
+                    // no toast import here; keep silent or fallback later
+                  }
+                }}>
                   <Download className="w-4 h-4 mr-2" />
                   Download
                 </Button>

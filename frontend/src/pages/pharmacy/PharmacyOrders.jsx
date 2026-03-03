@@ -169,10 +169,17 @@ const PharmacyOrders = () => {
   };
 
   const handleCreateOrder = () => {
-    const newId = `ORD-${String(orders.length + 1).padStart(3, '0')}`;
+    const qty = Number(String(newOrder.quantity).replace(/[^0-9]/g, "")) || 0;
+    const unitPrice = Number(newOrder.price) || 0;
+    if (!newOrder.patientName || !newOrder.medication || qty <= 0 || unitPrice <= 0) {
+      toast.error("Enter patient, medication, quantity (>0), and unit price (>0)");
+      return;
+    }
+    const newId = `local-${Date.now()}`;
     const currentDate = new Date();
     const order = {
       id: newId,
+      displayId: `ORD-${String(orders.length + 1).padStart(3, '0')}`,
       patientName: newOrder.patientName,
       doctorName: newOrder.doctorName,
       date: currentDate.toISOString().split('T')[0],
@@ -181,11 +188,11 @@ const PharmacyOrders = () => {
       items: [
         { 
           name: newOrder.medication, 
-          quantity: newOrder.quantity, 
-          price: `$${newOrder.price}` 
+          quantity: qty, 
+          price: formatINR(unitPrice) 
         }
       ],
-      total: `$${newOrder.price}`
+      total: formatINR(qty * unitPrice)
     };
 
     setOrders([order, ...orders]);
@@ -241,10 +248,6 @@ const PharmacyOrders = () => {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handlePrint}>
-              <Printer className="w-4 h-4 mr-2" />
-              Print List
-            </Button>
             <Button variant="outline" onClick={handleSyncFromPrescriptions} disabled={syncing}>
               <RefreshCcw className="w-4 h-4 mr-2" />
               {syncing ? "Syncing..." : "Sync from Prescriptions"}
@@ -394,7 +397,7 @@ const PharmacyOrders = () => {
                         <div key={idx} className="flex justify-between text-sm">
                           <span className="font-medium">{item.name}</span>
                           <div className="flex gap-4 text-muted-foreground">
-                            <span>{item.quantity ? `${item.quantity} tabs` : ""}</span>
+                            <span>{item.quantity ? `${item.quantity} qty` : ""}</span>
                             <span>{item.price}</span>
                           </div>
                         </div>
@@ -425,7 +428,7 @@ const PharmacyOrders = () => {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                    {order.status === "Pending" && (
+                    {order.status === "Pending" && Number.isInteger(order.id) && (
                       <Button size="sm" variant="hero" onClick={async () => {
                         try {
                           await pharmacyService.orders.accept(order.id);
@@ -434,7 +437,7 @@ const PharmacyOrders = () => {
                         } catch {}
                       }}>Start Processing</Button>
                     )}
-                    {order.status === "Accepted" && (
+                    {order.status === "Accepted" && Number.isInteger(order.id) && (
                       <Button size="sm" variant="hero" className="bg-green-600 hover:bg-green-700" onClick={async () => {
                         try {
                           await pharmacyService.orders.complete(order.id);
@@ -449,7 +452,7 @@ const PharmacyOrders = () => {
                         Complete Order
                       </Button>
                     )}
-                    {order.status === "Pending" && (
+                    {order.status === "Pending" && Number.isInteger(order.id) && (
                       <Button size="sm" variant="outline" onClick={async () => {
                         try {
                           await pharmacyService.orders.reject(order.id);
@@ -460,7 +463,7 @@ const PharmacyOrders = () => {
                         Cancel
                       </Button>
                     )}
-                    <Button size="sm" variant="outline" onClick={() => {
+                    {Number.isInteger(order.id) && <Button size="sm" variant="outline" onClick={() => {
                       setBillingOrder(order);
                       setBillingItems(order.items.map((it) => ({
                         id: it.id,
@@ -471,7 +474,7 @@ const PharmacyOrders = () => {
                       setBillingOpen(true);
                     }}>
                       Add Bill
-                    </Button>
+                    </Button>}
                   </div>
                 </div>
               </div>
@@ -538,35 +541,30 @@ const PharmacyOrders = () => {
                 {formatINR(billingItems.reduce((sum, x) => sum + (Number(x.quantity) * Number(x.unit_price)), 0))}
               </span>
             </div>
-            <div className="pt-2">
-              <Label>Attach Bill (PDF/Image)</Label>
-              <Input type="file" accept="application/pdf,image/*" onChange={(e) => setBillingAttachment(e.target.files?.[0] || null)} />
-            </div>
+            {/* Removed attachment upload; we will generate bill PDF */}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBillingOpen(false)}>Cancel</Button>
             <Button variant="hero" onClick={async () => {
               if (!billingOrder) return;
               try {
-                const payload = billingItems.map(x => ({ id: x.id, quantity: x.quantity, unit_price: x.unit_price }));
-                    const updated = await appointmentsService.prescriptions.updatePharmacyBill(billingOrder.prescription_id, payload, billingAttachment);
-                setOrders(prev => prev.map(o => o.id === billingOrder.id ? {
-                  ...o,
-                  items: (updated.items || []).map(m => ({
-                    name: m.name,
-                    quantity: m.quantity,
-                    price: formatINR(m.unit_price)
-                  })),
-                  total: formatINR(updated.total_amount || 0)
-                } : o));
-                toast.success("Bill updated");
+                const payload = billingItems.map(x => ({ id: x.id, name: x.name, quantity: x.quantity, unit_price: x.unit_price }));
+                await appointmentsService.prescriptions.updatePharmacyBill(billingOrder.prescription_id, payload, null);
+                const blob = await pharmacyService.orders.bill(billingOrder.id);
+                const url = window.URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+                const link = document.createElement("a");
+                link.href = url;
+                link.setAttribute("download", `bill_${billingOrder.displayId || billingOrder.id}.pdf`);
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                toast.success("Bill generated");
                 setBillingOpen(false);
-                setBillingAttachment(null);
               } catch {
                 toast.error("Failed to update bill");
               }
             }}>
-              Save Bill
+              Generate Bill
             </Button>
           </DialogFooter>
         </DialogContent>

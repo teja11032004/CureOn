@@ -200,20 +200,7 @@ const DoctorPatients = () => {
                   <p className="font-medium text-foreground">{patient.lastVisit}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Input
-                    ref={(el) => { fileInputRefs.current[patient.id] = el; }}
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    className="hidden"
-                    onChange={(e) => handleFileUpload(patient.id, e)}
-                  />
-                  <Button variant="outline" size="sm" onClick={() => handleUploadClick(patient.id)}>
-                    <Upload className="w-4 h-4" />
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleViewHistory(patient)}>
-                    <FileText className="w-4 h-4 mr-2" />
-                    {t('doctor.patients.history')}
-                  </Button>
+                  
                   <Button variant="hero" size="sm" onClick={() => navigate(`/doctor/patients/${patient.id}`)}>
                     View
                   </Button>

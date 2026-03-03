@@ -1,6 +1,6 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import RegisterView, AdminCreateStaffView, UserDetailView, UsersListView, AdminUserUpdateView, DoctorsPublicListView, LabsPublicListView, PatientProfileView, DoctorProfileView, PharmacyProfileView, LabProfileView, AdminProfileView, ChangePasswordView, ChangeUsernameView, AvatarUploadView, MyTokenObtainPairView
+from .views import RegisterView, AdminCreateStaffView, UserDetailView, UsersListView, AdminUserUpdateView, DoctorsPublicListView, LabsPublicListView, PharmaciesPublicListView, PatientProfileView, DoctorProfileView, PharmacyProfileView, LabProfileView, AdminProfileView, ChangePasswordView, ChangeUsernameView, AvatarUploadView, MyTokenObtainPairView
 from .views_admin import (
     AdminDoctorDetailView,
     AdminPatientDetailView,
@@ -18,6 +18,7 @@ urlpatterns = [
     path('users/<int:pk>/', AdminUserUpdateView.as_view(), name='users_update'),
     path('doctors/', DoctorsPublicListView.as_view(), name='doctors_public_list'),
     path('labs/', LabsPublicListView.as_view(), name='labs_public_list'),
+    path('pharmacies/', PharmaciesPublicListView.as_view(), name='pharmacies_public_list'),
     path('patient/profile/', PatientProfileView.as_view(), name='patient_profile'),
     path('doctor/profile/', DoctorProfileView.as_view(), name='doctor_profile'),
     path('pharmacy/profile/', PharmacyProfileView.as_view(), name='pharmacy_profile'),

@@ -21,6 +21,7 @@ from .serializers import (
     PharmacyOrderSerializer,
 )
 from .services import create_order_from_prescription, complete_order_and_create_sale, recalc_order_totals
+from django.core.files.base import ContentFile
 from .permissions import CanManageInventory
 
 
@@ -202,9 +203,39 @@ class CatalogViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         q = self.request.query_params.get("q")
+        pharmacy_id = self.request.query_params.get("pharmacy_id")
+        specialization = self.request.query_params.get("specialization")
         if q:
             s = q.strip()
             qs = qs.filter(Q(name__icontains=s) | Q(category__icontains=s) | Q(supplier__icontains=s))
+        if pharmacy_id:
+            try:
+                qs = qs.filter(created_by_id=int(pharmacy_id))
+            except Exception:
+                pass
+        if specialization:
+            spec = specialization.strip()
+            spec_map = {
+                "Cardiologist": ["Cardiac", "Heart"],
+                "Dermatologist": ["Skin", "Dermatology"],
+                "Neurologist": ["Neuro", "Neurology"],
+                "Orthopedic": ["Orthopedic", "Bones"],
+                "Ophthalmologist": ["Eye", "Ophthalmology"],
+                "Pediatrician": ["Pediatric", "Children"],
+                "General Physician": ["General", "Antibiotics", "Painkiller", "Vitamins"],
+            }
+            cats = []
+            for k, v in spec_map.items():
+                if k.lower() in spec.lower():
+                    cats = v
+                    break
+            if cats:
+                cond = None
+                for c in cats:
+                    clause = Q(category__icontains=c)
+                    cond = clause if cond is None else (cond | clause)
+                if cond is not None:
+                    qs = qs.filter(cond)
         return qs.order_by("name")
 
     def get_permissions(self):
@@ -317,6 +348,51 @@ class PharmacyOrderViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
         return Response(PharmacyOrderSerializer(order).data)
+
+    @action(detail=True, methods=["get"], url_path="bill")
+    def bill(self, request, pk=None):
+        order = self.get_object()
+        try:
+            order = recalc_order_totals(order)
+        except Exception:
+            pass
+        # Generate a simple PDF bill using PIL
+        img = Image.new("RGB", (700, 800), color="white")
+        draw = ImageDraw.Draw(img)
+        y = 30
+        draw.text((260, y), "Medication Order Bill", fill="black"); y += 30
+        draw.line((20, y, 680, y), fill="black"); y += 10
+        draw.text((40, y), f"Order: {order.order_id or order.id}", fill="black"); y += 25
+        draw.text((40, y), f"Date: {order.created_at.strftime('%Y-%m-%d %H:%M')}", fill="black"); y += 25
+        draw.text((40, y), f"Patient: {getattr(order.patient, 'username', '')}", fill="black"); y += 25
+        draw.text((40, y), f"Pharmacy: {getattr(order.pharmacy, 'username', '')}", fill="black"); y += 25
+        draw.line((20, y, 680, y), fill="black"); y += 15
+        draw.text((40, y), "Items:", fill="black"); y += 20
+        total = Decimal("0.00")
+        for it in order.items.all():
+            line = f"- {it.name}  x{it.quantity}  @ {it.unit_price} = {it.amount}"
+            draw.text((50, y), line, fill="black"); y += 20
+            total += (it.amount or Decimal("0.00"))
+            if y > 700:
+                draw.line((20, y, 680, y), fill="black"); y = 60
+        draw.line((20, y, 680, y), fill="black"); y += 25
+        draw.text((40, y), f"Total Amount: {total}", fill="black"); y += 25
+        draw.text((40, y), "Thank you!", fill="black")
+        pdf_io = BytesIO()
+        img.save(pdf_io, "PDF", resolution=100.0)
+        pdf_io.seek(0)
+        # Attach to prescription for patient retrieval
+        try:
+            presc = Prescription.objects.get(id=order.prescription_id)
+            presc.total_amount = total
+            content = ContentFile(pdf_io.getvalue())
+            filename = f"bill_{order.order_id or order.id}.pdf"
+            presc.bill_attachment.save(filename, content, save=True)
+        except Exception:
+            pass
+        response = HttpResponse(pdf_io.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="bill_{order.order_id or order.id}.pdf"'
+        return response
 
     @action(detail=False, methods=["post"], url_path="backfill-from-prescriptions")
     def backfill_from_prescriptions(self, request):

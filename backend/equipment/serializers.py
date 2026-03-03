@@ -3,10 +3,12 @@ from .models import Equipment
 
 
 class EquipmentSerializer(serializers.ModelSerializer):
+    lab = serializers.PrimaryKeyRelatedField(read_only=True)
     class Meta:
         model = Equipment
         fields = [
             "id",
+            "lab",
             "asset_id",
             "name",
             "model",
